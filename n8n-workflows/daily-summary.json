@@ -1,0 +1,128 @@
+{
+  "name": "Daily Summary (7 AM)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }]
+        }
+      },
+      "id": "ds-0001-0001-0001-000000000001",
+      "name": "Every Day 7 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const yesterday = new Date(Date.now() - 86400000);\nconst d = yesterday.toISOString().slice(0, 10);\nreturn [{ json: { date: d, start: d, end: d } }];"
+      },
+      "id": "ds-0001-0001-0001-000000000002",
+      "name": "Yesterday's Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://twenty:3000/api",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"query Yesterday($filter: PeopleFilterInput) { findManyPeople(filter: $filter) { edges { node { id name { firstName lastName } emails { primaryEmail } inquiryStatus eventType estimatedRevenue { amountMicros currencyCode } } } } }\",\n  \"variables\": { \"filter\": { \"createdAt\": { \"gte\": \"{{$json.date}}T00:00:00Z\" } } }\n}",
+        "options": {}
+      },
+      "id": "ds-0001-0001-0001-000000000003",
+      "name": "Yesterday's Twenty Inquiries",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 200],
+      "credentials": {
+        "httpHeaderAuth": { "name": "Twenty API" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://ninja-nginx:80/api/v1/invoices",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Requested-With", "value": "XMLHttpRequest" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "created_at", "value": "={{$('Yesterday\\'s Date').item.json.date}}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ds-0001-0001-0001-000000000004",
+      "name": "Yesterday's Invoices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 400],
+      "credentials": {
+        "httpHeaderAuth": { "name": "Invoice Ninja" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const date = $('Yesterday\\'s Date').first().json.date;\nconst people = $('Yesterday\\'s Twenty Inquiries').first().json?.data?.findManyPeople?.edges || [];\nconst invoices = $('Yesterday\\'s Invoices').first().json?.data || [];\n\nconst newInquiries = people.length;\nconst booked = people.filter(e => e.node.inquiryStatus === 'BOOKED').length;\nconst revenueCents = invoices.reduce((sum, inv) => sum + (Number(inv.amount) || 0), 0);\n\nconst lines = [\n  `Date: ${date}`,\n  '',\n  `New inquiries: ${newInquiries}`,\n  `Bookings: ${booked}`,\n  `Invoices issued: ${invoices.length}`,\n  `Revenue (issued): $${(revenueCents).toFixed(2)}`,\n  '',\n  'Inquiry list:',\n  ...people.map(e => `  \\u2022 ${e.node.name?.firstName || ''} ${e.node.name?.lastName || ''} \\u2014 ${e.node.eventType || ''} \\u2014 ${e.node.inquiryStatus || ''}`)\n];\n\nreturn [{ json: { date, body: lines.join('\\n'), newInquiries, booked, revenue: revenueCents } }];"
+      },
+      "id": "ds-0001-0001-0001-000000000005",
+      "name": "Build Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.BUSINESS_OWNER_EMAIL || 'owner@rewindmediaevents.com'}}",
+        "toEmail": "={{$env.BUSINESS_OWNER_EMAIL || 'owner@rewindmediaevents.com'}}",
+        "subject": "=📊 Daily Summary — {{$json.date}}",
+        "text": "={{$json.body}}",
+        "options": {}
+      },
+      "id": "ds-0001-0001-0001-000000000006",
+      "name": "Send Digest",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1180, 300],
+      "credentials": {
+        "smtp": { "name": "SMTP" }
+      }
+    }
+  ],
+  "connections": {
+    "Every Day 7 AM": {
+      "main": [[{ "node": "Yesterday's Date", "type": "main", "index": 0 }]]
+    },
+    "Yesterday's Date": {
+      "main": [
+        [
+          { "node": "Yesterday's Twenty Inquiries", "type": "main", "index": 0 },
+          { "node": "Yesterday's Invoices", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Yesterday's Twenty Inquiries": {
+      "main": [[{ "node": "Build Summary", "type": "main", "index": 0 }]]
+    },
+    "Yesterday's Invoices": {
+      "main": [[{ "node": "Build Summary", "type": "main", "index": 0 }]]
+    },
+    "Build Summary": {
+      "main": [[{ "node": "Send Digest", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

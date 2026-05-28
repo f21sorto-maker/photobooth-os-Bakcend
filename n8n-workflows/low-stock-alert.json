@@ -1,0 +1,108 @@
+{
+  "name": "Low Stock Alert (Daily)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }]
+        }
+      },
+      "id": "ls-0001-0001-0001-000000000001",
+      "name": "Every Day 8 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://inventree:8000/api/part/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "low_stock", "value": "true" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ls-0001-0001-0001-000000000002",
+      "name": "Fetch Low-Stock Parts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "credentials": {
+        "httpHeaderAuth": { "name": "InvenTree" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst parts = Array.isArray(raw) ? raw : (raw?.results || []);\nif (parts.length === 0) {\n  return [{ json: { skip: true, count: 0 } }];\n}\nconst lines = parts.map(p =>\n  `• ${p.name} — stock ${p.in_stock} (reorder at ${p.minimum_stock})`\n).join('\\n');\nreturn [{ json: { skip: false, count: parts.length, body: lines } }];"
+      },
+      "id": "ls-0001-0001-0001-000000000003",
+      "name": "Format Email Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{$json.skip}}",
+              "rightValue": "={{false}}",
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ls-0001-0001-0001-000000000004",
+      "name": "Anything Low?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.BUSINESS_OWNER_EMAIL || 'owner@rewindmediaevents.com'}}",
+        "toEmail": "={{$env.BUSINESS_OWNER_EMAIL || 'owner@rewindmediaevents.com'}}",
+        "subject": "=⚠️  {{$json.count}} part(s) below reorder level",
+        "text": "=The following parts are at or below their reorder level:\n\n{{$json.body}}\n\nReorder soon to avoid stockouts.\n\nCheck inventory: https://inventory.{{$env.DOMAIN_BASE || 'photobooth.local'}}",
+        "options": {}
+      },
+      "id": "ls-0001-0001-0001-000000000005",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1200, 220],
+      "credentials": {
+        "smtp": { "name": "SMTP" }
+      }
+    }
+  ],
+  "connections": {
+    "Every Day 8 AM": {
+      "main": [[{ "node": "Fetch Low-Stock Parts", "type": "main", "index": 0 }]]
+    },
+    "Fetch Low-Stock Parts": {
+      "main": [[{ "node": "Format Email Body", "type": "main", "index": 0 }]]
+    },
+    "Format Email Body": {
+      "main": [[{ "node": "Anything Low?", "type": "main", "index": 0 }]]
+    },
+    "Anything Low?": {
+      "main": [
+        [{ "node": "Send Email", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

@@ -1,0 +1,299 @@
+{
+  "id": "lead-capture",
+  "name": "Lead Capture (Website Form)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "booking-inquiry",
+        "responseMode": "responseNode",
+        "options": {
+          "respondToPreflight": true
+        }
+      },
+      "id": "lc-0001-0001-0001-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "booking-inquiry"
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// ─── ORIGIN VALIDATION ─────────────────────────────────────────────\n// PRODUCTION: Allow https://rewindmediaevents.com and www variant\n// LOCAL DEV:  Also allow null, localhost, 127.0.0.1, and file:// origins\n//\n// To lock down for production, change DEV_MODE to false.\n// ────────────────────────────────────────────────────────────────────\nconst DEV_MODE = true; // ← Set to false before deploying to production\n\nconst origin = ($input.first().json.headers?.origin\n             || $input.first().json.headers?.Origin\n             || '').trim();\n\nconst ALLOWED_PRODUCTION = [\n  'https://rewindmediaevents.com',\n  'https://www.rewindmediaevents.com'\n];\nconst ALLOWED_DEV = [\n  'null',                           // file:// sends Origin: null\n  '',                                // some browsers send no Origin\n];\nconst DEV_PATTERNS = [\n  /^https?:\\/\\/localhost(:\\d+)?$/,   // http://localhost:5500\n  /^https?:\\/\\/127\\.0\\.0\\.1(:\\d+)?$/, // http://127.0.0.1:8080\n  /^https?:\\/\\/0\\.0\\.0\\.0(:\\d+)?$/,   // http://0.0.0.0:3000\n];\n\nlet allowed = ALLOWED_PRODUCTION.includes(origin);\n\nif (!allowed && DEV_MODE) {\n  allowed = ALLOWED_DEV.includes(origin)\n         || DEV_PATTERNS.some(p => p.test(origin));\n}\n\nreturn [{ json: { originAllowed: allowed, origin, ...($input.first().json) } }];"
+      },
+      "id": "lc-0001-0001-0001-000000000009",
+      "name": "Validate Origin",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.originAllowed }}",
+              "rightValue": "={{ true }}",
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "lc-0001-0001-0001-000000000010",
+      "name": "IF Origin Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [680, 300]
+    },
+
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"error\": \"Forbidden\" }",
+        "options": {
+          "responseCode": 403,
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" },
+              { "name": "Access-Control-Allow-Methods", "value": "POST, OPTIONS" },
+              { "name": "Access-Control-Allow-Headers", "value": "Content-Type" }
+            ]
+          }
+        }
+      },
+      "id": "lc-0001-0001-0001-000000000011",
+      "name": "403 Forbidden",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [920, 480]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ ($json.body.website || '').trim() }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "lc-0001-0001-0001-000000000020",
+      "name": "IF Honeypot Empty",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [920, 160]
+    },
+
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"ok\": true }",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" },
+              { "name": "Access-Control-Allow-Methods", "value": "POST, OPTIONS" },
+              { "name": "Access-Control-Allow-Headers", "value": "Content-Type" }
+            ]
+          }
+        }
+      },
+      "id": "lc-0001-0001-0001-000000000021",
+      "name": "200 Silent Discard",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1140, 340]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "const b = $input.first().json.body || {};\nconst required = ['firstName','lastName','email','eventDate'];\nconst missing = required.filter(f => !b[f] || String(b[f]).trim() === '');\nreturn [{ json: { valid: missing.length === 0, missing, ...b } }];"
+      },
+      "id": "lc-0001-0001-0001-000000000030",
+      "name": "Check Required Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 60]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "={{ true }}",
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "lc-0001-0001-0001-000000000031",
+      "name": "IF Fields Present",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [1380, 60]
+    },
+
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'Missing required fields: ' + $json.missing.join(', ') }) }}",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" },
+              { "name": "Access-Control-Allow-Methods", "value": "POST, OPTIONS" },
+              { "name": "Access-Control-Allow-Headers", "value": "Content-Type" }
+            ]
+          }
+        }
+      },
+      "id": "lc-0001-0001-0001-000000000032",
+      "name": "400 Missing Fields",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1620, 200]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://twenty:3000/graphql",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"mutation CreatePerson($data: PersonCreateInput!) { createPerson(data: $data) { id } }\",\n  \"variables\": {\n    \"data\": {\n      \"name\": {\n        \"firstName\": \"{{ $json.firstName.trim() }}\",\n        \"lastName\": \"{{ $json.lastName.trim() }}\"\n      },\n      \"emails\": { \"primaryEmail\": \"{{ $json.email.trim().toLowerCase() }}\" },\n      \"phones\": { \"primaryPhoneNumber\": \"{{ ($json.phone || '').trim() }}\" },\n      \"eventDate\": \"{{ $json.eventDate }}\",\n      \"eventType\": \"{{ ($json.eventType || '').trim() }}\",\n      \"eventAddress\": \"{{ ($json.eventAddress || '').trim() }}\",\n      \"guestCount\": {{ parseInt($json.guestCount, 10) || 0 }},\n      \"inquiryStatus\": \"FOLLOW_UP\",\n      \"source\": \"WEBSITE_FORM\",\n      \"notes\": \"{{ ($json.notes || $json.message || '').trim() }}\"\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "lc-0001-0001-0001-000000000040",
+      "name": "Create Person in Twenty CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1620, -60],
+      "credentials": {
+        "httpHeaderAuth": { "name": "Twenty API" }
+      }
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://listmonk:9000/api/subscribers",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"email\": \"{{ $('Check Required Fields').item.json.email.trim().toLowerCase() }}\",\n  \"name\": \"{{ $('Check Required Fields').item.json.firstName }} {{ $('Check Required Fields').item.json.lastName }}\",\n  \"status\": \"enabled\",\n  \"lists\": [{{ $env.LISTMONK_INQUIRY_LIST_ID || 1 }}],\n  \"preconfirm_subscriptions\": true\n}",
+        "options": {}
+      },
+      "id": "lc-0001-0001-0001-000000000050",
+      "name": "Add to Listmonk",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1620, -240],
+      "credentials": {
+        "httpBasicAuth": { "name": "Listmonk" }
+      }
+    },
+
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.BUSINESS_OWNER_EMAIL || 'owner@rewindmediaevents.com' }}",
+        "toEmail": "={{ $env.BUSINESS_OWNER_EMAIL || 'owner@rewindmediaevents.com' }}",
+        "subject": "=New Inquiry: {{ $('Check Required Fields').item.json.firstName }} {{ $('Check Required Fields').item.json.lastName }} — {{ $('Check Required Fields').item.json.eventType || 'Unknown' }}",
+        "text": "=New booking inquiry received.\n\nName: {{ $('Check Required Fields').item.json.firstName }} {{ $('Check Required Fields').item.json.lastName }}\nEmail: {{ $('Check Required Fields').item.json.email }}\nPhone: {{ $('Check Required Fields').item.json.phone || 'N/A' }}\nEvent Date: {{ $('Check Required Fields').item.json.eventDate }}\nEvent Type: {{ $('Check Required Fields').item.json.eventType || 'N/A' }}\nGuests: {{ $('Check Required Fields').item.json.guestCount || 'N/A' }}\nAddress: {{ $('Check Required Fields').item.json.eventAddress || 'N/A' }}\n\nNotes:\n{{ $('Check Required Fields').item.json.notes || $('Check Required Fields').item.json.message || '(none)' }}",
+        "options": {}
+      },
+      "id": "lc-0001-0001-0001-000000000060",
+      "name": "Email Owner Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1860, -60],
+      "credentials": {
+        "smtp": { "name": "SMTP" }
+      }
+    },
+
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"ok\": true, \"message\": \"Inquiry received — we will be in touch shortly!\" }",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" },
+              { "name": "Access-Control-Allow-Methods", "value": "POST, OPTIONS" },
+              { "name": "Access-Control-Allow-Headers", "value": "Content-Type" }
+            ]
+          }
+        }
+      },
+      "id": "lc-0001-0001-0001-000000000070",
+      "name": "200 Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2100, -60]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[ { "node": "Validate Origin", "type": "main", "index": 0 } ]]
+    },
+    "Validate Origin": {
+      "main": [[ { "node": "IF Origin Valid", "type": "main", "index": 0 } ]]
+    },
+    "IF Origin Valid": {
+      "main": [
+        [{ "node": "IF Honeypot Empty", "type": "main", "index": 0 }],
+        [{ "node": "403 Forbidden", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Honeypot Empty": {
+      "main": [
+        [{ "node": "Check Required Fields", "type": "main", "index": 0 }],
+        [{ "node": "200 Silent Discard", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Required Fields": {
+      "main": [[ { "node": "IF Fields Present", "type": "main", "index": 0 } ]]
+    },
+    "IF Fields Present": {
+      "main": [
+        [
+          { "node": "Create Person in Twenty CRM", "type": "main", "index": 0 },
+          { "node": "Add to Listmonk", "type": "main", "index": 0 }
+        ],
+        [{ "node": "400 Missing Fields", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Person in Twenty CRM": {
+      "main": [[ { "node": "Email Owner Notification", "type": "main", "index": 0 } ]]
+    },
+    "Email Owner Notification": {
+      "main": [[ { "node": "200 Success", "type": "main", "index": 0 } ]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": true,
+  "pinData": {}
+}

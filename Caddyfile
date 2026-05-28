@@ -1,0 +1,157 @@
+{
+	# Use Caddy's internal CA for local development.
+	# For production, remove this line to use Let's Encrypt automatically.
+	local_certs
+}
+
+# Dashboard SPA — static files (modular JS architecture)
+dashboard.{$DOMAIN_BASE} {
+	root * /srv/dashboard
+	try_files {path} /photobooth-admin.html
+	file_server
+	header {
+		Cache-Control "no-cache"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}
+
+# ---------------------------------------------------------------------------
+# CORS snippet — used by every API-facing subdomain
+# Caddy "header_down" only fires on proxied responses; it does NOT fire on
+# OPTIONS preflight requests that the upstream might ignore or reject.
+# To fix this, we intercept OPTIONS at the Caddy level with @cors matchers
+# and respond 204 directly, so the browser gets a proper preflight response.
+# ---------------------------------------------------------------------------
+
+# Twenty CRM
+crm.{$DOMAIN_BASE} {
+	@cors_preflight method OPTIONS
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin "https://dashboard.{$DOMAIN_BASE}"
+		header Access-Control-Allow-Methods "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+		header Access-Control-Allow-Headers "Content-Type, Authorization, Accept"
+		header Access-Control-Max-Age "86400"
+		respond "" 204
+	}
+	reverse_proxy twenty:3000 {
+		header_down Access-Control-Allow-Origin "https://dashboard.{$DOMAIN_BASE}"
+		header_down Access-Control-Allow-Methods "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+		header_down Access-Control-Allow-Headers "Content-Type, Authorization, Accept"
+	}
+	header {
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
+	}
+}
+
+# Invoice Ninja
+invoice.{$DOMAIN_BASE} {
+	@cors_preflight method OPTIONS
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin "https://dashboard.{$DOMAIN_BASE}"
+		header Access-Control-Allow-Methods "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+		header Access-Control-Allow-Headers "Content-Type, Authorization, X-Api-Token, X-Requested-With, Accept"
+		header Access-Control-Max-Age "86400"
+		respond "" 204
+	}
+	reverse_proxy ninja-nginx:80 {
+		header_down Access-Control-Allow-Origin "https://dashboard.{$DOMAIN_BASE}"
+		header_down Access-Control-Allow-Methods "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+		header_down Access-Control-Allow-Headers "Content-Type, Authorization, X-Api-Token, X-Requested-With, Accept"
+	}
+	header {
+		X-Frame-Options "SAMEORIGIN"
+	}
+}
+
+# DocuSeal (e-contracts)
+contracts.{$DOMAIN_BASE} {
+	@cors_preflight method OPTIONS
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin "https://dashboard.{$DOMAIN_BASE}"
+		header Access-Control-Allow-Methods "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+		header Access-Control-Allow-Headers "Content-Type, Authorization, X-Auth-Token, Accept"
+		header Access-Control-Max-Age "86400"
+		respond "" 204
+	}
+	reverse_proxy docuseal:3000 {
+		header_down Access-Control-Allow-Origin "https://dashboard.{$DOMAIN_BASE}"
+		header_down Access-Control-Allow-Methods "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+		header_down Access-Control-Allow-Headers "Content-Type, Authorization, X-Auth-Token, Accept"
+	}
+	header {
+		X-Frame-Options "SAMEORIGIN"
+	}
+}
+
+# InvenTree (inventory)
+inventory.{$DOMAIN_BASE} {
+	@cors_preflight method OPTIONS
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin "https://dashboard.{$DOMAIN_BASE}"
+		header Access-Control-Allow-Methods "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+		header Access-Control-Allow-Headers "Content-Type, Authorization, Accept"
+		header Access-Control-Max-Age "86400"
+		respond "" 204
+	}
+	reverse_proxy inventree:8000 {
+		header_down Access-Control-Allow-Origin "https://dashboard.{$DOMAIN_BASE}"
+		header_down Access-Control-Allow-Methods "GET, POST, PATCH, PUT, DELETE, OPTIONS"
+		header_down Access-Control-Allow-Headers "Content-Type, Authorization, Accept"
+	}
+	header {
+		X-Frame-Options "SAMEORIGIN"
+	}
+}
+
+# Listmonk (email)
+email.{$DOMAIN_BASE} {
+	@cors_preflight method OPTIONS
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin "https://dashboard.{$DOMAIN_BASE}"
+		header Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		header Access-Control-Allow-Headers "Content-Type, Authorization, Accept"
+		header Access-Control-Max-Age "86400"
+		respond "" 204
+	}
+	reverse_proxy listmonk:9000 {
+		header_down Access-Control-Allow-Origin "https://dashboard.{$DOMAIN_BASE}"
+		header_down Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		header_down Access-Control-Allow-Headers "Content-Type, Authorization, Accept"
+	}
+	header {
+		X-Frame-Options "SAMEORIGIN"
+	}
+}
+
+# n8n (automation) — allows CORS from any origin for public webhooks
+automation.{$DOMAIN_BASE} {
+	@cors_preflight method OPTIONS
+	handle @cors_preflight {
+		header Access-Control-Allow-Origin "*"
+		header Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		header Access-Control-Allow-Headers "Content-Type, Authorization, Accept"
+		header Access-Control-Max-Age "86400"
+		respond "" 204
+	}
+
+	reverse_proxy n8n:5678 {
+		header_down Access-Control-Allow-Origin "*"
+		header_down Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		header_down Access-Control-Allow-Headers "Content-Type, Authorization, Accept"
+	}
+	header {
+		X-Frame-Options "SAMEORIGIN"
+	}
+}
+
+# Cal.com (booking calendar)
+calendar.{$DOMAIN_BASE} {
+	reverse_proxy calcom:3000
+	header {
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
+	}
+}

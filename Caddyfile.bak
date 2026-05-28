@@ -1,0 +1,67 @@
+{
+	# Use Caddy's internal CA for local development.
+	# For production, remove this line to use Let's Encrypt automatically.
+	local_certs
+}
+
+# Dashboard SPA — static files
+dashboard.{$DOMAIN_BASE} {
+	root * /srv/dashboard
+	try_files {path} /photobooth-admin.html
+	file_server
+	header {
+		Cache-Control "no-cache"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}
+
+# Twenty CRM
+crm.{$DOMAIN_BASE} {
+	reverse_proxy twenty:3000
+	header {
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
+	}
+}
+
+# Invoice Ninja
+invoice.{$DOMAIN_BASE} {
+	reverse_proxy invoiceninja:80
+	header {
+		X-Frame-Options "SAMEORIGIN"
+	}
+}
+
+# DocuSeal (e-contracts)
+contracts.{$DOMAIN_BASE} {
+	reverse_proxy docuseal:3000
+	header {
+		X-Frame-Options "SAMEORIGIN"
+	}
+}
+
+# InvenTree (inventory)
+inventory.{$DOMAIN_BASE} {
+	reverse_proxy inventree:8000
+	header {
+		X-Frame-Options "SAMEORIGIN"
+	}
+}
+
+# Listmonk (email)
+email.{$DOMAIN_BASE} {
+	reverse_proxy listmonk:9000
+	header {
+		X-Frame-Options "SAMEORIGIN"
+	}
+}
+
+# n8n (automation)
+automation.{$DOMAIN_BASE} {
+	reverse_proxy n8n:5678
+	header {
+		X-Frame-Options "SAMEORIGIN"
+	}
+}

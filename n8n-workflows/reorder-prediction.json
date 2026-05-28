@@ -1,0 +1,108 @@
+{
+  "name": "Reorder Prediction (Weekly)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 9 * * 1" }]
+        }
+      },
+      "id": "rp-0001-0001-0001-000000000001",
+      "name": "Every Monday 9 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://inventree:8000/api/part/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "active", "value": "true" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "rp-0001-0001-0001-000000000002",
+      "name": "Fetch All Parts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "httpHeaderAuth": { "name": "InvenTree" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst parts = Array.isArray(data) ? data : (data?.results || []);\n\nif (parts.length === 0) {\n  return [{ json: { skip: true, count: 0 } }];\n}\n\n// Analyze each part: stock level vs minimum_stock (reorder level)\nconst predictions = parts.map(p => {\n  const stock = p.in_stock || 0;\n  const reorder = p.minimum_stock || 0;\n  const ratio = reorder > 0 ? stock / reorder : 999;\n  let urgency = 'OK';\n  if (stock <= 0) urgency = 'OUT OF STOCK';\n  else if (stock <= reorder) urgency = 'REORDER NOW';\n  else if (ratio <= 2) urgency = 'REORDER SOON';\n  \n  return {\n    name: p.name || p.IPN || 'Unknown',\n    stock,\n    reorderLevel: reorder,\n    urgency,\n    ratio: +ratio.toFixed(1)\n  };\n}).filter(p => p.urgency !== 'OK')\n  .sort((a, b) => a.ratio - b.ratio);\n\nif (predictions.length === 0) {\n  return [{ json: { skip: true, count: 0 } }];\n}\n\nconst lines = predictions.map(p =>\n  `${p.urgency === 'OUT OF STOCK' ? '🔴' : p.urgency === 'REORDER NOW' ? '🟡' : '🟢'} ${p.name} — stock: ${p.stock}, reorder at: ${p.reorderLevel} [${p.urgency}]`\n).join('\\n');\n\nreturn [{ json: {\n  skip: false,\n  count: predictions.length,\n  outOfStock: predictions.filter(p => p.urgency === 'OUT OF STOCK').length,\n  reorderNow: predictions.filter(p => p.urgency === 'REORDER NOW').length,\n  reorderSoon: predictions.filter(p => p.urgency === 'REORDER SOON').length,\n  body: lines\n} }];"
+      },
+      "id": "rp-0001-0001-0001-000000000003",
+      "name": "Analyze Stock Levels",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{$json.skip}}",
+              "rightValue": "={{false}}",
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "rp-0001-0001-0001-000000000004",
+      "name": "Any Predictions?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.BUSINESS_OWNER_EMAIL || 'owner@rewindmediaevents.com'}}",
+        "toEmail": "={{$env.BUSINESS_OWNER_EMAIL || 'owner@rewindmediaevents.com'}}",
+        "subject": "=📦 Weekly Reorder Prediction — {{$json.count}} item(s) need attention",
+        "text": "=Weekly Inventory Reorder Prediction\n================================\n\n🔴 Out of stock: {{$json.outOfStock}}\n🟡 Reorder now:  {{$json.reorderNow}}\n🟢 Reorder soon: {{$json.reorderSoon}}\n\nDetails:\n{{$json.body}}\n\n---\nCheck inventory at https://inventory.{{$env.DOMAIN_BASE || 'photobooth.local'}}\nThis is an automated weekly report from Photo Booth OS.",
+        "options": {}
+      },
+      "id": "rp-0001-0001-0001-000000000005",
+      "name": "Send Prediction Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1180, 220],
+      "credentials": {
+        "smtp": { "name": "SMTP" }
+      }
+    }
+  ],
+  "connections": {
+    "Every Monday 9 AM": {
+      "main": [[{ "node": "Fetch All Parts", "type": "main", "index": 0 }]]
+    },
+    "Fetch All Parts": {
+      "main": [[{ "node": "Analyze Stock Levels", "type": "main", "index": 0 }]]
+    },
+    "Analyze Stock Levels": {
+      "main": [[{ "node": "Any Predictions?", "type": "main", "index": 0 }]]
+    },
+    "Any Predictions?": {
+      "main": [
+        [{ "node": "Send Prediction Email", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

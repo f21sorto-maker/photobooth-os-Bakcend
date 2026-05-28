@@ -1,0 +1,104 @@
+{
+  "name": "Deposit Receipt",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "deposit-receipt",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "dr-0001-0001-0001-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "deposit-receipt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://twenty:3000/api",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"mutation UpdatePeople($id: ID!, $data: PeopleUpdateInput!) { updatePeople(id: $id, data: $data) { id } }\",\n  \"variables\": {\n    \"id\": \"{{$json.body.personId}}\",\n    \"data\": {\n      \"depositPaid\": true,\n      \"depositAmount\": { \"amountMicros\": {{Math.round(($json.body.depositAmount || 0) * 10000)}}, \"currencyCode\": \"USD\" }\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "dr-0001-0001-0001-000000000002",
+      "name": "Mark Deposit Paid in Twenty",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "credentials": {
+        "httpHeaderAuth": { "name": "Twenty API" }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.BUSINESS_OWNER_EMAIL || 'owner@rewindmediaevents.com'}}",
+        "toEmail": "={{$json.body.clientEmail}}",
+        "subject": "=Deposit Received — Rewind Media Events",
+        "text": "=Hi {{$('Webhook').item.json.body.clientName}},\n\nThank you! We have received your deposit of ${{$('Webhook').item.json.body.depositAmount}}.\n\nEvent Details:\n- Date: {{$('Webhook').item.json.body.eventDate}}\n- Type: {{$('Webhook').item.json.body.eventType}}\n- Address: {{$('Webhook').item.json.body.eventAddress}}\n\nYour booking is confirmed. We'll be in touch as the event date approaches.\n\nBest regards,\nRewind Media Events",
+        "options": {}
+      },
+      "id": "dr-0001-0001-0001-000000000003",
+      "name": "Send Receipt to Client",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 200],
+      "credentials": {
+        "smtp": { "name": "SMTP" }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.BUSINESS_OWNER_EMAIL || 'owner@rewindmediaevents.com'}}",
+        "toEmail": "={{$env.BUSINESS_OWNER_EMAIL || 'owner@rewindmediaevents.com'}}",
+        "subject": "=💰 Deposit received: ${{$('Webhook').item.json.body.depositAmount}} from {{$('Webhook').item.json.body.clientName}}",
+        "text": "=Deposit of ${{$('Webhook').item.json.body.depositAmount}} received from {{$('Webhook').item.json.body.clientName}} ({{$('Webhook').item.json.body.clientEmail}}).\n\nEvent: {{$('Webhook').item.json.body.eventType}} on {{$('Webhook').item.json.body.eventDate}}",
+        "options": {}
+      },
+      "id": "dr-0001-0001-0001-000000000004",
+      "name": "Notify Owner",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 400],
+      "credentials": {
+        "smtp": { "name": "SMTP" }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"ok\": true, \"message\": \"Deposit recorded and receipt sent\" }",
+        "options": {}
+      },
+      "id": "dr-0001-0001-0001-000000000005",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [960, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Mark Deposit Paid in Twenty", "type": "main", "index": 0 }]]
+    },
+    "Mark Deposit Paid in Twenty": {
+      "main": [
+        [
+          { "node": "Send Receipt to Client", "type": "main", "index": 0 },
+          { "node": "Notify Owner", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Send Receipt to Client": {
+      "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

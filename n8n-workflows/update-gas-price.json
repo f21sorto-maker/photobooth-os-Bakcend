@@ -1,0 +1,159 @@
+{
+  "name": "Update Gas Price (EIA)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "hours", "hoursInterval": 3 }
+          ]
+        }
+      },
+      "id": "gp-0001-0001-0001-000000000001",
+      "name": "Every 3 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 220]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "gas-price",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "gp-0001-0001-0001-000000000002",
+      "name": "Webhook GET /gas-price",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "webhookId": "gas-price"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Return cached gas price if it's < 4h old, otherwise let downstream nodes refresh.\nconst sd = $getWorkflowStaticData('global');\nconst now = Date.now();\nconst FRESH_MS = 4 * 60 * 60 * 1000; // 4 hours\nif (sd.gasPrice && sd.fetchedAt && (now - sd.fetchedAt) < FRESH_MS) {\n  return [{ json: { cached: true, ...sd } }];\n}\nreturn [{ json: { cached: false, mustFetch: true } }];"
+      },
+      "id": "gp-0001-0001-0001-000000000003",
+      "name": "Check Cache",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{$json.mustFetch}}",
+              "rightValue": "={{true}}",
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "gp-0001-0001-0001-000000000004",
+      "name": "Cache Stale?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.eia.gov/v2/petroleum/pri/gnd/data/",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "api_key", "value": "={{$env.EIA_API_KEY}}" },
+            { "name": "frequency", "value": "weekly" },
+            { "name": "data[0]", "value": "value" },
+            { "name": "facets[duoarea][]", "value": "={{$env.EIA_STATE_CODE || 'SOH'}}" },
+            { "name": "facets[product][]", "value": "EPMR" },
+            { "name": "facets[process][]", "value": "PTE" },
+            { "name": "sort[0][column]", "value": "period" },
+            { "name": "sort[0][direction]", "value": "desc" },
+            { "name": "offset", "value": "0" },
+            { "name": "length", "value": "1" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "gp-0001-0001-0001-000000000005",
+      "name": "EIA Weekly Retail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 60]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the EIA response and cache it on $workflow staticData.\nconst row = $input.first().json?.response?.data?.[0];\nif (!row) {\n  const sd = $getWorkflowStaticData('global');\n  return [{ json: { ok: false, error: 'EIA returned no data', cached: sd } }];\n}\nconst price = Number(row.value);\nif (!Number.isFinite(price) || price <= 0) {\n  return [{ json: { ok: false, error: 'Invalid price ' + row.value } }];\n}\nconst sd = $getWorkflowStaticData('global');\nsd.gasPrice = price;\nsd.period = row.period;\nsd.area = row['area-name'];\nsd.product = row['product-name'];\nsd.source = 'EIA-878 Weekly Retail Gasoline Prices';\nsd.fetchedAt = Date.now();\nreturn [{ json: { ok: true, gasPrice: price, period: sd.period, area: sd.area, fetchedAt: sd.fetchedAt } }];"
+      },
+      "id": "gp-0001-0001-0001-000000000006",
+      "name": "Cache Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 60]
+    },
+    {
+      "parameters": {
+        "jsCode": "const sd = $getWorkflowStaticData('global');\nreturn [{ json: {\n  gasPricePerGallon: sd.gasPrice ?? null,\n  period: sd.period ?? null,\n  area: sd.area ?? null,\n  product: sd.product ?? null,\n  source: sd.source ?? null,\n  fetchedAt: sd.fetchedAt ?? null,\n  ageHours: sd.fetchedAt ? +((Date.now() - sd.fetchedAt) / 3600000).toFixed(2) : null\n} }];"
+      },
+      "id": "gp-0001-0001-0001-000000000007",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Cache-Control", "value": "public, max-age=3600" },
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "gp-0001-0001-0001-000000000008",
+      "name": "Respond JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 400]
+    }
+  ],
+  "connections": {
+    "Every 3 Hours": {
+      "main": [[{ "node": "EIA Weekly Retail", "type": "main", "index": 0 }]]
+    },
+    "EIA Weekly Retail": {
+      "main": [[{ "node": "Cache Result", "type": "main", "index": 0 }]]
+    },
+    "Webhook GET /gas-price": {
+      "main": [[{ "node": "Check Cache", "type": "main", "index": 0 }]]
+    },
+    "Check Cache": {
+      "main": [[{ "node": "Cache Stale?", "type": "main", "index": 0 }]]
+    },
+    "Cache Stale?": {
+      "main": [
+        [{ "node": "EIA Weekly Retail", "type": "main", "index": 0 }],
+        [{ "node": "Build Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Cache Result": {
+      "main": [[{ "node": "Build Response", "type": "main", "index": 0 }]]
+    },
+    "Build Response": {
+      "main": [[{ "node": "Respond JSON", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

@@ -1,0 +1,85 @@
+{
+  "name": "Send Contract (Quote → DocuSeal)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "quote-to-contract",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "sc-0001-0001-0001-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "quote-to-contract"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://docuseal:3000/api/submissions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"template_id\": {{$env.DOCUSEAL_TEMPLATE_ID || 1}},\n  \"send_email\": true,\n  \"submitters\": [{\n    \"role\": \"Client\",\n    \"email\": \"{{$json.body.clientEmail}}\",\n    \"name\": \"{{$json.body.clientName}}\",\n    \"values\": {\n      \"clientName\": \"{{$json.body.clientName}}\",\n      \"clientEmail\": \"{{$json.body.clientEmail}}\",\n      \"eventDate\": \"{{$json.body.eventDate}}\",\n      \"eventType\": \"{{$json.body.eventType}}\",\n      \"eventAddress\": \"{{$json.body.eventAddress}}\",\n      \"serviceHours\": {{$json.body.serviceHours || 3}},\n      \"totalAmount\": {{$json.body.totalAmount || 0}},\n      \"depositAmount\": {{$json.body.depositAmount || 0}},\n      \"contractDate\": \"{{$now.toISO().slice(0,10)}}\"\n    }\n  }],\n  \"metadata\": {\n    \"personId\": \"{{$json.body.personId}}\",\n    \"invoiceNinjaClientId\": \"{{$json.body.invoiceNinjaClientId}}\",\n    \"invoiceNinjaQuoteId\": \"{{$json.body.invoiceNinjaQuoteId}}\",\n    \"lineItems\": {{$json.body.lineItems || '[]'}},\n    \"dueDate\": \"{{$json.body.dueDate || ''}}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "sc-0001-0001-0001-000000000002",
+      "name": "Create DocuSeal Submission",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "credentials": {
+        "httpHeaderAuth": { "name": "DocuSeal" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://twenty:3000/api",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"mutation UpdatePeople($id: ID!, $data: PeopleUpdateInput!) { updatePeople(id: $id, data: $data) { id } }\",\n  \"variables\": {\n    \"id\": \"{{$('Webhook').item.json.body.personId}}\",\n    \"data\": {\n      \"contractSent\": true,\n      \"docusealContractId\": \"{{$json[0]?.submission_id || $json.id || $json.submission_id || ''}}\"\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "sc-0001-0001-0001-000000000003",
+      "name": "Update Person — Contract Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300],
+      "credentials": {
+        "httpHeaderAuth": { "name": "Twenty API" }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"ok\": true, \"submissionId\": \"{{$('Create DocuSeal Submission').item.json[0]?.submission_id || $('Create DocuSeal Submission').item.json.id || ''}}\" }",
+        "options": {}
+      },
+      "id": "sc-0001-0001-0001-000000000004",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [960, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Create DocuSeal Submission", "type": "main", "index": 0 }]]
+    },
+    "Create DocuSeal Submission": {
+      "main": [[{ "node": "Update Person — Contract Sent", "type": "main", "index": 0 }]]
+    },
+    "Update Person — Contract Sent": {
+      "main": [[{ "node": "Respond", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}
