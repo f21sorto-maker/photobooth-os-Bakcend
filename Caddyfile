@@ -127,7 +127,7 @@ email.{$DOMAIN_BASE} {
 }
 
 # n8n (automation) — allows CORS from any origin for public webhooks
-automation.{$DOMAIN_BASE} {
+n8n.{$DOMAIN_BASE} {
 	@cors_preflight method OPTIONS
 	handle @cors_preflight {
 		header Access-Control-Allow-Origin "*"
