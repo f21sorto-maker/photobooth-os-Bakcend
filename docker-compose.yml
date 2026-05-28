@@ -228,13 +228,13 @@ services:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       # Public webhook URL — Cloudflare Tunnel (local) or Nginx (VPS) routes this to n8n:5678
       WEBHOOK_URL: ${N8N_PUBLIC_WEBHOOK_URL:-https://n8n.rewindmediaevents.com}
-      N8N_HOST: automation.${DOMAIN_BASE}
+      N8N_HOST: n8n.${DOMAIN_BASE}
       N8N_PROTOCOL: https
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
       N8N_BASIC_AUTH_ACTIVE: "true"
       N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
       N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
-      N8N_EDITOR_BASE_URL: https://automation.${DOMAIN_BASE}
+      N8N_EDITOR_BASE_URL: https://n8n.${DOMAIN_BASE}
       # Allow workflow nodes to read env vars via {{$env.X}}
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       # n8n v2.21+ requires explicit allow list
@@ -256,8 +256,7 @@ services:
       N8N_EMAIL_SMTP_PASSWORD: ${BREVO_SMTP_PASS}
       N8N_EMAIL_SMTP_SENDER: ${BUSINESS_OWNER_EMAIL}
       N8N_PROXY_HOPS: "1"
-      N8N_DEFAULT_CORS: "true"
-      N8N_CORS_ALLOW_ORIGIN: "*"
+      N8N_CORS_ALLOWED_ORIGINS: "https://rewindmediaevents.com"
     depends_on:
       postgres:
         condition: service_healthy

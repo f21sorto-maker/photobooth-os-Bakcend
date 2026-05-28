@@ -7,9 +7,7 @@
         "httpMethod": "POST",
         "path": "booking-inquiry",
         "responseMode": "responseNode",
-        "options": {
-          "respondToPreflight": true
-        }
+        "options": {}
       },
       "id": "lc-0001-0001-0001-000000000001",
       "name": "Webhook",
